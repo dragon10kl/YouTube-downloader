@@ -1,9 +1,5 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler,
-    CallbackQueryHandler, MessageHandler,
-    ContextTypes, filters
-)
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
 import requests
 
 TOKEN = "8401609150:AAHjC52VuxuFC8CUGOmB9vbDyWNX6x5DxPQ"
@@ -11,16 +7,17 @@ TOKEN = "8401609150:AAHjC52VuxuFC8CUGOmB9vbDyWNX6x5DxPQ"
 YTMP3_API = "https://apis.davidcyriltech.my.id/download/ytmp3?url="
 YTMP4_API = "https://apis.davidcyriltech.my.id/download/ytmp4?url="
 
-# Dictionary to temporarily hold user video URLs
 user_requests = {}
 
-# Step 1: When a user sends a YouTube link
-async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if "youtube.com" in text or "youtu.be" in text:
-        chat_id = update.effective_chat.id
-        user_requests[chat_id] = text
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("ഹായ്! YouTube ലിങ്ക് അയയ്ക്കൂ 🎥")
 
+def handle_link(update: Update, context: CallbackContext):
+    text = update.message.text
+    chat_id = update.effective_chat.id
+
+    if "youtube.com" in text or "youtu.be" in text:
+        user_requests[chat_id] = text
         keyboard = [
             [
                 InlineKeyboardButton("🎵 MP3 ആകട്ടെ", callback_data="mp3"),
@@ -28,32 +25,29 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
-        await update.message.reply_text("താഴെതൽ ഐച്ഛികം തിരഞ്ഞെടുക്കൂ:", reply_markup=reply_markup)
+        update.message.reply_text("താഴെയുള്ളതിൽ ഒന്നിനൊന്ന് തിരഞ്ഞെടുക്കൂ:", reply_markup=reply_markup)
     else:
-        await update.message.reply_text("⚠️ ശരിയായ YouTube ലിങ്ക് അയക്കൂ.")
+        update.message.reply_text("⚠️ ശരിയായ YouTube ലിങ്ക് അയക്കൂ.")
 
-# Step 2: When user selects MP3 or MP4
-async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def button_click(update: Update, context: CallbackContext):
     query = update.callback_query
-    await query.answer()
-
-    chat_id = query.message.chat.id
+    chat_id = query.message.chat_id
     video_url = user_requests.get(chat_id)
 
+    query.answer()
     if not video_url:
-        await query.edit_message_text("⚠️ നേരത്തെ ലിങ്ക് ഇല്ല!")
+        query.edit_message_text("⚠️ YouTube ലിങ്ക് കാണുന്നില്ല.")
         return
 
-    await query.edit_message_text("🔄 ഡൗൺലോഡ് ചെയ്യുന്നു...")
+    query.edit_message_text("🔄 ഡൗൺലോഡ് ചെയ്യുന്നു...")
 
     try:
         if query.data == "mp3":
             res = requests.get(YTMP3_API + video_url).json()
-            format_name = "MP3"
+            link_type = "MP3"
         else:
             res = requests.get(YTMP4_API + video_url).json()
-            format_name = "MP4"
+            link_type = "MP4"
 
         if res.get("status") and res.get("result"):
             result = res["result"]
@@ -61,12 +55,28 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             download_url = result.get("url")
 
             if query.data == "mp3":
-                await context.bot.send_audio(chat_id=chat_id, audio=download_url, caption=f"🎵 {title}")
+                context.bot.send_audio(chat_id=chat_id, audio=download_url, caption=f"🎵 {title}")
             else:
-                await context.bot.send_video(chat_id=chat_id, video=download_url, caption=f"🎬 {title}")
+                context.bot.send_video(chat_id=chat_id, video=download_url, caption=f"🎬 {title}")
         else:
-            await context.bot.send_message(chat_id=chat_id, text=f"⚠️ {format_name} ഡൗൺലോഡ് ചെയ്യാനായില്ല.")
+            context.bot.send_message(chat_id=chat_id, text=f"⚠️ {link_type} ഡൗൺലോഡ് ചെയ്യാനായില്ല.")
     except Exception as e:
+        context.bot.send_message(chat_id=chat_id, text=f"❌ പിഴവ്: {e}")
+
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_link))
+    dp.add_handler(CallbackQueryHandler(button_click))
+
+    print("🤖 Bot ഓൺ ആയി ✅")
+    updater.start_polling()
+    updater.idle()
+
+if name == 'main':
+    main()
         await context.bot.send_message(chat_id=chat_id, text=f"❌ പിഴവ്: {e}")
 
 # Bot setup
